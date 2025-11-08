@@ -10,6 +10,7 @@ func (cluster *Cluster) Init(pve ProxmoxClient) {
 	cluster.pve = pve
 }
 
+// hard sync cluster
 func (cluster *Cluster) Sync() error {
 	// aquire lock on cluster, release on return
 	cluster.lock.Lock()
@@ -25,10 +26,11 @@ func (cluster *Cluster) Sync() error {
 	// for each node:
 	for _, hostName := range nodes {
 		// rebuild node
-		err := cluster.RebuildHost(hostName)
+		err := cluster.RebuildNode(hostName)
 		if err != nil { // if an error was encountered, continue and log the error
-			log.Print(err.Error())
-			continue
+			log.Printf("[ERR] %s", err)
+		} else { // otherwise log success
+			log.Printf("[INF] successfully synced node %s", hostName)
 		}
 	}
 
@@ -65,15 +67,24 @@ func (cluster *Cluster) GetNode(hostName string) (*Node, error) {
 	return host, err
 }
 
-func (cluster *Cluster) RebuildHost(hostName string) error {
+// hard sync node
+// returns error if the node could not be reached
+func (cluster *Cluster) RebuildNode(hostName string) error {
 	host, err := cluster.pve.Node(hostName)
-	if err != nil { // host is probably down or otherwise unreachable
-		return fmt.Errorf("error retrieving %s: %s, possibly down?", hostName, err.Error())
+	if err != nil && cluster.Nodes[hostName] == nil { // host is unreachable and did not exist previously
+		// return an error because we requested to sync a node that was not already in the cluster
+		return fmt.Errorf("error retrieving %s: %s", hostName, err.Error())
 	}
 
 	// aquire lock on host, release on return
 	host.lock.Lock()
 	defer host.lock.Unlock()
+
+	if err != nil && cluster.Nodes[hostName] != nil { // host is unreachable and did exist previously
+		// assume the node is down or gone and delete from cluster
+		delete(cluster.Nodes, hostName)
+		return nil
+	}
 
 	cluster.Nodes[hostName] = host
 
@@ -86,8 +97,9 @@ func (cluster *Cluster) RebuildHost(hostName string) error {
 	for _, vmid := range vms {
 		err := host.RebuildInstance(VM, vmid)
 		if err != nil { // if an error was encountered, continue and log the error
-			log.Print(err.Error())
-			continue
+			log.Printf("[ERR] %s", err)
+		} else {
+			log.Printf("[INF] successfully synced vm %s.%d", hostName, vmid)
 		}
 	}
 
@@ -98,8 +110,10 @@ func (cluster *Cluster) RebuildHost(hostName string) error {
 	}
 	for _, vmid := range cts {
 		err := host.RebuildInstance(CT, vmid)
-		if err != nil {
-			return err
+		if err != nil { // if an error was encountered, continue and log the error
+			log.Printf("[ERR] %s", err)
+		} else {
+			log.Printf("[INF] successfully synced ct %s.%d", hostName, vmid)
 		}
 	}
 
@@ -143,28 +157,35 @@ func (host *Node) GetInstance(vmid uint) (*Instance, error) {
 	return instance, err
 }
 
+// hard sync instance
+// returns error if the instance could not be reached
 func (host *Node) RebuildInstance(instancetype InstanceType, vmid uint) error {
+	instanceID := InstanceID(vmid)
 	var instance *Instance
+	var err error
 	if instancetype == VM {
-		var err error
 		instance, err = host.VirtualMachine(vmid)
-		if err != nil {
-			return fmt.Errorf("error retrieving %d: %s, possibly down?", vmid, err.Error())
-		}
 	} else if instancetype == CT {
-		var err error
 		instance, err = host.Container(vmid)
-		if err != nil {
-			return fmt.Errorf("error retrieving %d: %s, possibly down?", vmid, err.Error())
-		}
 
+	}
+
+	if err != nil && host.Instances[instanceID] == nil { // instance is unreachable and did not exist previously
+		// return an error because we requested to sync an instance that was not already in the cluster
+		return fmt.Errorf("error retrieving %d.%d: %s", host.Name, instanceID, err.Error())
 	}
 
 	// aquire lock on instance, release on return
 	instance.lock.Lock()
 	defer instance.lock.Unlock()
 
-	host.Instances[InstanceID(vmid)] = instance
+	if err != nil && host.Instances[instanceID] != nil { // host is unreachable and did exist previously
+		// assume the instance is gone and delete from cluster
+		delete(host.Instances, instanceID)
+		return nil
+	}
+
+	host.Instances[instanceID] = instance
 
 	for volid := range instance.configDisks {
 		instance.RebuildVolume(host, volid)
@@ -215,10 +236,11 @@ func (instance *Instance) RebuildNet(netid string) error {
 	return nil
 }
 
-func (instance *Instance) RebuildDevice(host *Node, deviceid string) error {
+func (instance *Instance) RebuildDevice(host *Node, deviceid string) {
 	instanceDevice, ok := instance.configHostPCIs[deviceid]
 	if !ok { // if device does not exist
-		return fmt.Errorf("%s not found in devices", deviceid)
+		log.Printf("%s not found in devices", deviceid)
+		return
 	}
 
 	hostDeviceBusID := DeviceID(strings.Split(instanceDevice, ",")[0])
@@ -235,8 +257,6 @@ func (instance *Instance) RebuildDevice(host *Node, deviceid string) error {
 
 	instance.Devices[DeviceID(instanceDeviceBusID)].Device_ID = DeviceID(deviceid)
 	instance.Devices[DeviceID(instanceDeviceBusID)].Value = instanceDevice
-
-	return nil
 }
 
 func (instance *Instance) RebuildBoot() {
