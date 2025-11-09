@@ -9,7 +9,7 @@ import (
 type Cluster struct {
 	lock  sync.Mutex
 	pve   ProxmoxClient
-	Nodes map[string]*Node
+	Nodes map[string]*Node `json:"nodes"`
 }
 
 type Node struct {
@@ -88,7 +88,6 @@ type Device struct {
 	Vendor_Name string                   `json:"vendor_name"`
 	Functions   map[FunctionID]*Function `json:"functions"`
 	Reserved    bool                     `json:"reserved"`
-	Value       string
 }
 
 type FunctionID string
