@@ -188,5 +188,6 @@ func Run() {
 	})
 
 	log.Printf("[INFO] starting API listening on 0.0.0.0:%d", config.ListenPort)
-	router.Run("0.0.0.0:" + strconv.Itoa(config.ListenPort))
+	err := router.Run("0.0.0.0:" + strconv.Itoa(config.ListenPort))
+	log.Printf("[Err ] API ended unexpectedly: (%s)", err.Error())
 }
