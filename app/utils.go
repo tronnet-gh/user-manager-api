@@ -14,8 +14,8 @@ type Config struct {
 	PVE        struct {
 		URL   string `json:"url"`
 		Token struct {
-			USER   string `json:"user"`
-			REALM  string `json:"realm"`
+			User   string `json:"user"`
+			Realm  string `json:"realm"`
 			ID     string `json:"id"`
 			Secret string `json:"uuid"`
 		}

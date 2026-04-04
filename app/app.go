@@ -27,7 +27,7 @@ func Run() {
 	config := GetConfig(*configPath)
 	log.Printf("[INFO] initialized config from %s", *configPath)
 
-	token := fmt.Sprintf(`%s@%s!%s`, config.PVE.Token.USER, config.PVE.Token.REALM, config.PVE.Token.ID)
+	token := fmt.Sprintf(`%s@%s!%s`, config.PVE.Token.User, config.PVE.Token.Realm, config.PVE.Token.ID)
 	client = NewClient(config.PVE.URL, token, config.PVE.Token.Secret)
 
 	router := gin.Default()
