@@ -5,10 +5,10 @@ go 1.26.0
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/luthermonson/go-proxmox v0.4.1
-	paas-common-lib v0.0.0
+	proxmoxaas-common-lib v0.0.0
 )
 
-replace paas-common-lib => ./paas-common-lib
+replace proxmoxaas-common-lib => ./proxmoxaas-common-lib
 
 require (
 	github.com/buger/goterm v1.0.4 // indirect
