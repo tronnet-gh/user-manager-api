@@ -7,6 +7,11 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
+// uses and aliases common resource types from proxmoxaas-common-lib
+// except for Cluster, Node, and Instance which require mutex locks and additional fields
+
+// add mutex and pve client
+// override Nodes map to new custom Node type
 type Cluster struct {
 	paas.Cluster
 	lock  sync.Mutex
@@ -14,6 +19,8 @@ type Cluster struct {
 	Nodes map[string]*Node `json:"nodes"`
 }
 
+// add mutex and pve api Node object
+// override Instances map to bew custom Instance type
 type Node struct {
 	lock sync.Mutex
 	paas.Node
@@ -27,6 +34,7 @@ type InstanceType = paas.InstanceType
 const VM InstanceType = paas.VM
 const CT InstanceType = paas.CT
 
+// add mutex and various config objects
 type Instance struct {
 	lock sync.Mutex
 	paas.Instance
