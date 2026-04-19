@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
+	paas "proxmoxaas-fabric/paas-common-lib"
 )
 
 func (cluster *Cluster) Init(pve ProxmoxClient) {
@@ -241,7 +243,7 @@ func (instance *Instance) RebuildVolume(host *Node, volid string) error {
 		return err
 	}
 
-	voltype := AnyPrefixes(volid, VolumeTypes)
+	voltype := AnyPrefixes(volid, paas.VolumeTypes)
 	volume.Type = voltype
 	volume.Volume_ID = VolumeID(volid)
 	instance.Volumes[VolumeID(volid)] = volume
