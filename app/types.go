@@ -1,7 +1,7 @@
 package app
 
 import (
-	paas "proxmoxaas-fabric/paas-common-lib"
+	paas "proxmoxaas-common-lib"
 	"sync"
 
 	"github.com/luthermonson/go-proxmox"

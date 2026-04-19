@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	paas "proxmoxaas-fabric/paas-common-lib"
+	paas "proxmoxaas-common-lib"
 )
 
 func (cluster *Cluster) Init(pve ProxmoxClient) {
