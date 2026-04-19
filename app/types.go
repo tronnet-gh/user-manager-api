@@ -20,7 +20,7 @@ type Cluster struct {
 }
 
 // add mutex and pve api Node object
-// override Instances map to bew custom Instance type
+// override Instances map to new custom Instance type
 type Node struct {
 	lock sync.Mutex
 	paas.Node
