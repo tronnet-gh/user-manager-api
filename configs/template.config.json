@@ -1,7 +1,7 @@
 {
     "listenPort": 80,
     "pve": {
-        "url": "http://<proxmox host>/api2/json",
+        "url": "https://<proxmox host>/api2/json",
         "token": {
             "user": "proxmoxaas-api",
             "realm": "pam",
