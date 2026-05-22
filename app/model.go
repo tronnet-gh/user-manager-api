@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
@@ -54,6 +55,35 @@ func (cluster *Cluster) Sync() error {
 				log.Printf("[INFO] successfully synced node %s", hostName)
 			}
 		}
+
+		//resolve pool membership
+		pools, err := cluster.pve.client.Pools(context.Background())
+		if err != nil {
+			err_ch <- err
+			return
+		}
+		for _, pool := range pools {
+			pool, err = cluster.pve.client.Pool(context.Background(), pool.PoolID)
+			if err != nil {
+				err_ch <- err
+				return
+			}
+			for _, member := range pool.Members {
+				if member.Type == "lxc" || member.Type == "qemu" {
+					node, ok := cluster.Nodes[member.Node]
+					if !ok {
+						return
+					}
+					instance, ok := node.Instances[InstanceID(member.VMID)]
+					if !ok {
+						return
+					}
+					instance.Pool = pool.PoolID
+					log.Printf("[INFO] successfully resolved pool membership for vmid=%d pool=%s", member.VMID, pool.PoolID)
+				}
+			}
+		}
+
 		err_ch <- nil
 	}()
 
