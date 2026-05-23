@@ -26,6 +26,7 @@ type Node struct {
 	paas.Node
 	Instances map[InstanceID]*Instance `json:"instances"`
 	pvenode   *proxmox.Node
+	cluster   *Cluster // link cluster needed for instance pool sync
 }
 
 type InstanceID = paas.InstanceID

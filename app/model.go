@@ -56,38 +56,40 @@ func (cluster *Cluster) Sync() error {
 			}
 		}
 
-		//resolve pool membership
-		pools, err := cluster.pve.client.Pools(context.Background())
-		if err != nil {
-			err_ch <- err
-			return
-		}
-		for _, pool := range pools {
-			pool, err = cluster.pve.client.Pool(context.Background(), pool.PoolID)
-			if err != nil {
-				err_ch <- err
-				return
-			}
-			for _, member := range pool.Members {
-				if member.Type == "lxc" || member.Type == "qemu" {
-					node, ok := cluster.Nodes[member.Node]
-					if !ok {
-						return
-					}
-					instance, ok := node.Instances[InstanceID(member.VMID)]
-					if !ok {
-						return
-					}
-					instance.Pool = pool.PoolID
-					log.Printf("[INFO] successfully resolved pool membership for vmid=%d pool=%s", member.VMID, pool.PoolID)
-				}
-			}
-		}
-
 		err_ch <- nil
 	}()
 
 	return <-err_ch
+}
+
+func (cluster *Cluster) ResolvePoolMembership() error {
+	//resolve pool membership
+	pools, err := cluster.pve.client.Pools(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, pool := range pools {
+		pool, err = cluster.pve.client.Pool(context.Background(), pool.PoolID)
+		if err != nil {
+			return err
+		}
+		for _, member := range pool.Members {
+			if member.Type == "lxc" || member.Type == "qemu" {
+				node, ok := cluster.Nodes[member.Node]
+				if !ok {
+					return fmt.Errorf("Instance %s has no node", member.VMID)
+				}
+				instance, ok := node.Instances[InstanceID(member.VMID)]
+				if !ok {
+					return fmt.Errorf("Instance %s claimed to be in node %s but was not", member.VMID, node.Name)
+				}
+				instance.Pool = pool.PoolID
+				log.Printf("[INFO] successfully resolved pool membership for vmid=%d pool=%s", member.VMID, pool.PoolID)
+			}
+		}
+	}
+
+	return nil
 }
 
 // get a node in the cluster
@@ -140,6 +142,8 @@ func (cluster *Cluster) RebuildNode(hostName string) error {
 		}
 
 		cluster.Nodes[hostName] = host
+		// attatch pointer to cluster to node
+		cluster.Nodes[hostName].cluster = cluster
 
 		// get node's VMs
 		vms, err := host.VirtualMachines()
@@ -259,6 +263,8 @@ func (host *Node) RebuildInstance(instancetype InstanceType, vmid uint) error {
 			instance.RebuildBoot()
 		}
 
+		// after synchronizing an instance, resync pool membership
+		host.cluster.ResolvePoolMembership()
 		err_ch <- nil
 	}()
 
