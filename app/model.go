@@ -77,11 +77,11 @@ func (cluster *Cluster) ResolvePoolMembership() error {
 			if member.Type == "lxc" || member.Type == "qemu" {
 				node, ok := cluster.Nodes[member.Node]
 				if !ok {
-					return fmt.Errorf("Instance %s has no node", member.VMID)
+					return fmt.Errorf("Instance %d has no node", member.VMID)
 				}
 				instance, ok := node.Instances[InstanceID(member.VMID)]
 				if !ok {
-					return fmt.Errorf("Instance %s claimed to be in node %s but was not", member.VMID, node.Name)
+					return fmt.Errorf("Instance %d claimed to be in node %s but was not", member.VMID, node.Name)
 				}
 				instance.Pool = pool.PoolID
 				log.Printf("[INFO] successfully resolved pool membership for vmid=%d pool=%s", member.VMID, pool.PoolID)
@@ -223,9 +223,10 @@ func (host *Node) RebuildInstance(instancetype InstanceType, vmid uint) error {
 		instanceID := InstanceID(vmid)
 		var instance *Instance
 		var err error
-		if instancetype == VM {
+		switch instancetype {
+		case VM:
 			instance, err = host.VirtualMachine(vmid)
-		} else if instancetype == CT {
+		case CT:
 			instance, err = host.Container(vmid)
 
 		}
@@ -252,7 +253,7 @@ func (host *Node) RebuildInstance(instancetype InstanceType, vmid uint) error {
 		}
 
 		for netid := range instance.configNets {
-			instance.RebuildNet(netid)
+			instance.RebuildNet(host, netid)
 		}
 
 		for deviceid := range instance.configHostPCIs {
@@ -260,7 +261,7 @@ func (host *Node) RebuildInstance(instancetype InstanceType, vmid uint) error {
 		}
 
 		if instance.Type == VM {
-			instance.RebuildBoot()
+			instance.RebuildBoot(host)
 		}
 
 		// after synchronizing an instance, resync pool membership
@@ -287,7 +288,7 @@ func (instance *Instance) RebuildVolume(host *Node, volid string) error {
 	return nil
 }
 
-func (instance *Instance) RebuildNet(netid string) error {
+func (instance *Instance) RebuildNet(host *Node, netid string) error {
 	net := instance.configNets[netid]
 
 	netinfo, err := GetNetInfo(net)
@@ -323,7 +324,7 @@ func (instance *Instance) RebuildDevice(host *Node, deviceid string) {
 	instance.Devices[DeviceID(instanceDeviceBusID)].Device_ID = DeviceID(deviceid)
 }
 
-func (instance *Instance) RebuildBoot() {
+func (instance *Instance) RebuildBoot(host *Node) {
 	instance.Boot = BootOrder{}
 
 	eligibleBoot := map[string]bool{}
