@@ -249,23 +249,39 @@ func (host *Node) RebuildInstance(instancetype InstanceType, vmid uint) error {
 		host.Instances[instanceID] = instance
 
 		for volid := range instance.configDisks {
-			instance.RebuildVolume(host, volid)
+			err = instance.RebuildVolume(host, volid)
+			if err != nil {
+				err_ch <- err
+			}
 		}
 
 		for netid := range instance.configNets {
-			instance.RebuildNet(host, netid)
+			err = instance.RebuildNet(host, netid)
+			if err != nil {
+				err_ch <- err
+			}
 		}
 
 		for deviceid := range instance.configHostPCIs {
-			instance.RebuildDevice(host, deviceid)
+			err = instance.RebuildDevice(host, deviceid)
+			if err != nil {
+				err_ch <- err
+			}
 		}
 
 		if instance.Type == VM {
-			instance.RebuildBoot(host)
+			err = instance.RebuildBoot(host)
+			if err != nil {
+				err_ch <- err
+			}
 		}
 
 		// after synchronizing an instance, resync pool membership
-		host.cluster.ResolvePoolMembership()
+		err = host.cluster.ResolvePoolMembership()
+		if err != nil {
+			err_ch <- err
+		}
+
 		err_ch <- nil
 	}()
 
@@ -302,11 +318,11 @@ func (instance *Instance) RebuildNet(host *Node, netid string) error {
 	return nil
 }
 
-func (instance *Instance) RebuildDevice(host *Node, deviceid string) {
+func (instance *Instance) RebuildDevice(host *Node, deviceid string) error {
 	instanceDevice, ok := instance.configHostPCIs[deviceid]
 	if !ok { // if device does not exist
-		log.Printf("[WARN] %s not found in devices", deviceid)
-		return
+		log.Printf("[WARN] %s not found in devices on node %s", deviceid, host.Name)
+		return nil
 	}
 
 	hostDeviceBusID := DeviceID(strings.Split(instanceDevice, ",")[0])
@@ -322,9 +338,11 @@ func (instance *Instance) RebuildDevice(host *Node, deviceid string) {
 	}
 
 	instance.Devices[DeviceID(instanceDeviceBusID)].Device_ID = DeviceID(deviceid)
+
+	return nil
 }
 
-func (instance *Instance) RebuildBoot(host *Node) {
+func (instance *Instance) RebuildBoot(host *Node) error {
 	instance.Boot = BootOrder{}
 
 	eligibleBoot := map[string]bool{}
@@ -365,4 +383,6 @@ func (instance *Instance) RebuildBoot(host *Node) {
 			log.Printf("[WARN] encountered disabled and non-eligible boot target %s in instance %s\n", bootTarget, instance.Name)
 		}
 	}
+
+	return nil
 }

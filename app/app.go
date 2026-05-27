@@ -35,9 +35,12 @@ func Run() {
 	cluster := Cluster{}
 	cluster.Init(client)
 	start := time.Now()
-	log.Printf("[INFO] starting cluster sync\n")
-	cluster.Sync()
-	log.Printf("[INFO] synced cluster in %fs\n", time.Since(start).Seconds())
+	err := cluster.Sync()
+	if err != nil {
+		log.Printf("[Error] error encountered while syncing cluster: %s", err)
+	} else {
+		log.Printf("[INFO] synced cluster in %fs\n", time.Since(start).Seconds())
+	}
 
 	// set repeating update for full rebuilds
 	ticker := time.NewTicker(time.Duration(config.ReloadInterval) * time.Second)
@@ -51,8 +54,12 @@ func Run() {
 			case <-ticker.C:
 				start := time.Now()
 				log.Printf("[INFO] starting cluster sync\n")
-				cluster.Sync()
-				log.Printf("[INFO] synced cluster in %fs\n", time.Since(start).Seconds())
+				err := cluster.Sync()
+				if err != nil {
+					log.Printf("[Error] error encountered while syncing cluster: %s", err)
+				} else {
+					log.Printf("[INFO] synced cluster in %fs\n", time.Since(start).Seconds())
+				}
 			}
 		}
 	}()
@@ -188,7 +195,7 @@ func Run() {
 	})
 
 	log.Printf("[INFO] starting API listening on 0.0.0.0:%d", config.ListenPort)
-	err := router.Run("0.0.0.0:" + strconv.Itoa(config.ListenPort))
+	err = router.Run("0.0.0.0:" + strconv.Itoa(config.ListenPort))
 	if err != nil {
 		log.Fatalf("[Err] Error starting router: %s", err.Error())
 	}
