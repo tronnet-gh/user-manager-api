@@ -56,6 +56,12 @@ func (cluster *Cluster) Sync() error {
 			}
 		}
 
+		// after synchronizing an instance, resync pool membership
+		err = cluster.ResolvePoolMembership()
+		if err != nil {
+			err_ch <- err
+		}
+
 		err_ch <- nil
 	}()
 
@@ -274,12 +280,6 @@ func (host *Node) RebuildInstance(instancetype InstanceType, vmid uint) error {
 			if err != nil {
 				err_ch <- err
 			}
-		}
-
-		// after synchronizing an instance, resync pool membership
-		err = host.cluster.ResolvePoolMembership()
-		if err != nil {
-			err_ch <- err
 		}
 
 		err_ch <- nil
