@@ -118,9 +118,9 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 	}
 
 	host.Name = node.Name
-	host.Cores = uint64(node.CPUInfo.CPUs)
-	host.Memory = uint64(node.Memory.Total)
-	host.Swap = uint64(node.Swap.Total)
+	host.Cores = SafeUint64(node.CPUInfo.CPUs)
+	host.Memory = node.Memory.Total
+	host.Swap = node.Swap.Total
 	host.pvenode = node
 
 	return &host, err
@@ -158,8 +158,8 @@ func (host *Node) VirtualMachine(VMID uint) (*Instance, error) {
 
 	instance.Name = vm.Name
 	instance.Proctype = vm.VirtualMachineConfig.CPU
-	instance.Cores = uint64(vm.VirtualMachineConfig.Cores)
-	instance.Memory = uint64(vm.VirtualMachineConfig.Memory) * MiB
+	instance.Cores = SafeUint64(vm.VirtualMachineConfig.Cores)
+	instance.Memory = SafeUint64(int(vm.VirtualMachineConfig.Memory)) * MiB
 	instance.Volumes = make(map[VolumeID]*Volume)
 	instance.Nets = make(map[NetID]*Net)
 	instance.Devices = make(map[DeviceID]*Device)
@@ -205,9 +205,9 @@ func (host *Node) Container(VMID uint) (*Instance, error) {
 	instance.Type = CT
 
 	instance.Name = ct.Name
-	instance.Cores = uint64(ct.ContainerConfig.Cores)
-	instance.Memory = uint64(ct.ContainerConfig.Memory) * MiB
-	instance.Swap = uint64(ct.ContainerConfig.Swap) * MiB
+	instance.Cores = SafeUint64(ct.ContainerConfig.Cores)
+	instance.Memory = SafeUint64(ct.ContainerConfig.Memory) * MiB
+	instance.Swap = SafeUint64(ct.ContainerConfig.Swap) * MiB
 	instance.Volumes = make(map[VolumeID]*Volume)
 	instance.Nets = make(map[NetID]*Net)
 
@@ -248,7 +248,7 @@ func GetVolumeInfo(host *Node, volume string) (*Volume, error) {
 		if c.Volid == volumeFile {
 			volumeData.Storage = volumeStorage
 			volumeData.Format = c.Format
-			volumeData.Size = uint64(c.Size)
+			volumeData.Size = c.Size
 			volumeData.File = volumeFile
 			volumeData.MP = volumeObj["mp"]
 		}
