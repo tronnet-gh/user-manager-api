@@ -32,9 +32,7 @@ type PVEProctype struct {
 func NewClient(url string, token string, secret string) ProxmoxClient {
 	HTTPClient := http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
+			TLSClientConfig: &tls.Config{},
 		},
 	}
 
