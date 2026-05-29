@@ -35,7 +35,6 @@ func (cluster *Cluster) Sync() error {
 	go func() {
 		// aquire lock on cluster, release on return
 		cluster.lock.Lock()
-		defer cluster.lock.Unlock()
 
 		cluster.Nodes = make(map[string]*Node)
 
@@ -56,7 +55,8 @@ func (cluster *Cluster) Sync() error {
 			}
 		}
 
-		// after synchronizing an instance, resync pool membership
+		cluster.lock.Unlock()
+
 		err = cluster.ResolvePoolMembership()
 		if err != nil {
 			err_ch <- err
@@ -69,33 +69,44 @@ func (cluster *Cluster) Sync() error {
 }
 
 func (cluster *Cluster) ResolvePoolMembership() error {
-	//resolve pool membership
-	pools, err := cluster.pve.client.Pools(context.Background())
-	if err != nil {
-		return err
-	}
-	for _, pool := range pools {
-		pool, err = cluster.pve.client.Pool(context.Background(), pool.PoolID)
+	err_ch := make(chan error)
+
+	go func() {
+		// aquire lock on cluster, release on return
+		cluster.lock.Lock()
+
+		//resolve pool membership
+		pools, err := cluster.pve.client.Pools(context.Background())
 		if err != nil {
-			return err
+			err_ch <- err
 		}
-		for _, member := range pool.Members {
-			if member.Type == "lxc" || member.Type == "qemu" {
-				node, ok := cluster.Nodes[member.Node]
-				if !ok {
-					return fmt.Errorf("Instance %d has no node", member.VMID)
+		for _, pool := range pools {
+			pool, err = cluster.pve.client.Pool(context.Background(), pool.PoolID)
+			if err != nil {
+				err_ch <- err
+			}
+			for _, member := range pool.Members {
+				if member.Type == "lxc" || member.Type == "qemu" {
+					node, ok := cluster.Nodes[member.Node]
+					if !ok {
+						err_ch <- fmt.Errorf("Instance %d has no node", member.VMID)
+					}
+					instance, ok := node.Instances[InstanceID(member.VMID)]
+					if !ok {
+						err_ch <- fmt.Errorf("Instance %d claimed to be in node %s but was not", member.VMID, node.Name)
+					}
+					instance.Pool = pool.PoolID
+					log.Printf("[INFO] successfully resolved pool membership for vmid=%d pool=%s", member.VMID, pool.PoolID)
 				}
-				instance, ok := node.Instances[InstanceID(member.VMID)]
-				if !ok {
-					return fmt.Errorf("Instance %d claimed to be in node %s but was not", member.VMID, node.Name)
-				}
-				instance.Pool = pool.PoolID
-				log.Printf("[INFO] successfully resolved pool membership for vmid=%d pool=%s", member.VMID, pool.PoolID)
 			}
 		}
-	}
 
-	return nil
+		err_ch <- nil
+
+		cluster.lock.Unlock()
+	}()
+
+	return <-err_ch
 }
 
 // get a node in the cluster
