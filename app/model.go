@@ -148,8 +148,6 @@ func (cluster *Cluster) RebuildNode(hostName string) error {
 		}
 
 		cluster.Nodes[hostName] = host
-		// attatch pointer to cluster to node
-		cluster.Nodes[hostName].cluster = cluster
 
 		// get node's VMs
 		vms, err := host.VirtualMachines()
