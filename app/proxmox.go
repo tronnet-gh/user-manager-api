@@ -148,8 +148,8 @@ func (host *Node) VirtualMachine(VMID uint) (*Instance, error) {
 	}
 
 	config := vm.VirtualMachineConfig
-	instance.configHostPCIs = config.MergeHostPCIs()
-	instance.configNets = config.MergeNets()
+	instance.configHostPCIs = config.HostPCIs
+	instance.configNets = config.Nets
 	instance.configDisks = MergeVMDisksAndUnused(config)
 	instance.configBoot = config.Boot
 
@@ -158,7 +158,7 @@ func (host *Node) VirtualMachine(VMID uint) (*Instance, error) {
 
 	instance.Name = vm.Name
 	instance.Proctype = vm.VirtualMachineConfig.CPU
-	instance.Cores = SafeUint64(vm.VirtualMachineConfig.Cores)
+	instance.Cores = SafeUint64(*vm.VirtualMachineConfig.Cores)
 	instance.Memory = SafeUint64(int(vm.VirtualMachineConfig.Memory)) * MiB
 	instance.Volumes = make(map[VolumeID]*Volume)
 	instance.Nets = make(map[NetID]*Net)
@@ -169,7 +169,7 @@ func (host *Node) VirtualMachine(VMID uint) (*Instance, error) {
 
 func MergeVMDisksAndUnused(vmc *proxmox.VirtualMachineConfig) map[string]string {
 	mergedDisks := vmc.MergeDisks()
-	for k, v := range vmc.MergeUnuseds() {
+	for k, v := range vmc.Unuseds {
 		mergedDisks[k] = v
 	}
 	return mergedDisks
@@ -198,7 +198,7 @@ func (host *Node) Container(VMID uint) (*Instance, error) {
 
 	config := ct.ContainerConfig
 	instance.configHostPCIs = make(map[string]string)
-	instance.configNets = config.MergeNets()
+	instance.configNets = config.Nets
 	instance.configDisks = MergeCTDisksAndUnused(config)
 
 	instance.pveconfig = config
@@ -206,8 +206,8 @@ func (host *Node) Container(VMID uint) (*Instance, error) {
 
 	instance.Name = ct.Name
 	instance.Cores = SafeUint64(ct.ContainerConfig.Cores)
-	instance.Memory = SafeUint64(ct.ContainerConfig.Memory) * MiB
-	instance.Swap = SafeUint64(ct.ContainerConfig.Swap) * MiB
+	instance.Memory = SafeUint64(*ct.ContainerConfig.Memory) * MiB
+	instance.Swap = SafeUint64(*ct.ContainerConfig.Swap) * MiB
 	instance.Volumes = make(map[VolumeID]*Volume)
 	instance.Nets = make(map[NetID]*Net)
 
@@ -216,10 +216,10 @@ func (host *Node) Container(VMID uint) (*Instance, error) {
 
 func MergeCTDisksAndUnused(cc *proxmox.ContainerConfig) map[string]string {
 	mergedDisks := make(map[string]string)
-	for k, v := range cc.MergeUnuseds() {
+	for k, v := range cc.Unuseds {
 		mergedDisks[k] = v
 	}
-	for k, v := range cc.MergeMps() {
+	for k, v := range cc.Mps {
 		mergedDisks[k] = v
 	}
 	mergedDisks["rootfs"] = cc.RootFS
