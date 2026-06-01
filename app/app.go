@@ -39,7 +39,7 @@ func Run() {
 	if err != nil {
 		log.Printf("[Error] error encountered while syncing cluster: %s", err)
 	} else {
-		log.Printf("[INFO] synced cluster in %fs\n", time.Since(start).Seconds())
+		log.Printf("[INFO] synced cluster in %d ms\n", time.Since(start).Milliseconds())
 	}
 
 	// set repeating update for full rebuilds
@@ -56,10 +56,11 @@ func Run() {
 				log.Printf("[INFO] starting cluster sync\n")
 				err := cluster.Sync()
 				if err != nil {
-					log.Printf("[Error] error encountered while syncing cluster: %s", err)
+					log.Printf("[ERR ] error encountered while syncing cluster: %s", err)
 				} else {
-					log.Printf("[INFO] synced cluster in %fs\n", time.Since(start).Seconds())
+					log.Printf("[INFO] synced cluster in %d ms", time.Since(start).Milliseconds())
 				}
+
 			}
 		}
 	}()
