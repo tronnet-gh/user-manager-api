@@ -26,6 +26,7 @@ type Node struct {
 	paas.Node
 	Instances map[InstanceID]*Instance `json:"instances"`
 	pvenode   *proxmox.Node
+	storage   map[string][]*proxmox.StorageContent
 }
 
 type InstanceID = paas.InstanceID

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/luthermonson/go-proxmox"
+	"golang.org/x/sync/errgroup"
 )
 
 type ProxmoxClient struct {
@@ -73,18 +74,21 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 	host := Node{}
 	host.Devices = make(map[DeviceBus]*Device)
 	host.Instances = make(map[InstanceID]*Instance)
+	host.storage = make(map[string][]*proxmox.StorageContent)
 
+	// get pve node
 	node, err := pve.client.Node(context.Background(), nodeName)
 	if err != nil {
 		return &host, err
 	}
 
+	// get pve node devices
 	devices := []PVEDevice{}
 	err = pve.client.Get(context.Background(), fmt.Sprintf("/nodes/%s/hardware/pci", nodeName), &devices)
 	if err != nil {
 		return &host, err
 	}
-
+	// populate host devices from pve node devices
 	for _, device := range devices {
 		x := strings.Split(device.ID, ".")
 		if len(x) != 2 { // this should always be true, but skip if not
@@ -108,15 +112,42 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 		}
 	}
 
+	// get pve node proctypes
 	proctypes := []PVEProctype{}
 	err = pve.client.Get(context.Background(), fmt.Sprintf("/nodes/%s/capabilities/qemu/cpu", nodeName), &proctypes)
 	if err != nil {
 		return &host, err
 	}
+	// populate host proctypes from pve node proctypes
 	for _, proctype := range proctypes {
 		host.Proctypes = append(host.Proctypes, proctype.Name)
 	}
 
+	// get all pve node storages
+	wg, _ := errgroup.WithContext(context.Background())
+	storages, err := node.Storages(context.Background())
+	if err != nil {
+		return &host, err
+	}
+	// populate host storage content from pve node storages
+	for _, storage := range storages {
+		wg.Go(func() error {
+			if storage.Enabled == 1 && storage.Active == 1 {
+				content, err := storage.GetContent(context.Background())
+				if err != nil {
+					return err
+				}
+				host.storage[storage.Name] = content
+			}
+			return nil
+		})
+	}
+	err = wg.Wait()
+	if err != nil {
+		return &host, err
+	}
+
+	// set host basic values
 	host.Name = node.Name
 	host.Cores = SafeUint64(node.CPUInfo.CPUs)
 	host.Memory = node.Memory.Total
@@ -234,17 +265,12 @@ func GetVolumeInfo(host *Node, volume string) (*Volume, error) {
 	volumeFile := volumeObj[""]
 	volumeStorage := strings.Split(volumeFile, ":")[0]
 
-	storage, err := host.pvenode.Storage(context.Background(), volumeStorage)
-	if err != nil {
-		return &volumeData, nil
+	storage, ok := host.storage[volumeStorage]
+	if !ok {
+		return &volumeData, fmt.Errorf("volume %s claims to be in storage %s but storage was not found", volume, volumeStorage)
 	}
 
-	content, err := storage.GetContent(context.Background())
-	if err != nil {
-		return &volumeData, nil
-	}
-
-	for _, c := range content {
+	for _, c := range storage {
 		if c.Volid == volumeFile {
 			volumeData.Storage = volumeStorage
 			volumeData.Format = c.Format
