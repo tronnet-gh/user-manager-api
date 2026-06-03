@@ -1,10 +1,10 @@
 module proxmoxaas-fabric
 
-go 1.26.2
+go 1.26.4
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/luthermonson/go-proxmox v0.7.0
+	github.com/luthermonson/go-proxmox v0.7.1
 	golang.org/x/sync v0.20.0
 	proxmoxaas-common-lib v0.0.0
 )
