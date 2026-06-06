@@ -35,6 +35,7 @@ func Run() {
 	cluster := Cluster{}
 	cluster.Init(client)
 	start := time.Now()
+	log.Printf("[INFO] starting cluster sync\n")
 	err := cluster.Sync()
 	if err != nil {
 		log.Printf("[Error] error encountered while syncing cluster: %s", err)

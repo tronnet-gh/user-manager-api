@@ -36,6 +36,7 @@ func (cluster *Cluster) Sync() error {
 	// get all nodes
 	nodes, err := cluster.pve.Nodes()
 	if err != nil {
+		cluster.lock.Unlock()
 		return err
 	}
 
@@ -56,6 +57,7 @@ func (cluster *Cluster) Sync() error {
 
 	err = wg.Wait()
 	if err != nil {
+		cluster.lock.Unlock()
 		return err
 	}
 
