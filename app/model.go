@@ -74,6 +74,7 @@ func (cluster *Cluster) Sync() error {
 func (cluster *Cluster) ResolvePoolMembership() error {
 	// aquire lock on cluster, release on return
 	cluster.lock.Lock()
+	defer cluster.lock.Unlock()
 
 	//resolve pool membership
 	pools, err := cluster.pve.client.Pools(context.Background())
@@ -101,7 +102,6 @@ func (cluster *Cluster) ResolvePoolMembership() error {
 		}
 	}
 
-	cluster.lock.Unlock()
 	return nil
 }
 
