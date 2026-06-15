@@ -17,6 +17,7 @@ type Cluster struct {
 	lock  sync.Mutex
 	pve   ProxmoxClient
 	Nodes map[string]*Node `json:"nodes"`
+	OK    bool
 }
 
 // add mutex and pve api Node object

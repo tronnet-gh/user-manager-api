@@ -20,14 +20,19 @@ func (cluster *Cluster) Get() (*Cluster, error) {
 	// aquire cluster lock
 	cluster.lock.Lock()
 	defer cluster.lock.Unlock()
-
-	return cluster, nil
+	if cluster.OK {
+		return cluster, nil
+	} else {
+		return nil, fmt.Errorf("cluster state is invalid")
+	}
 }
 
 // hard sync cluster
 func (cluster *Cluster) Sync() error {
 	// aquire lock on cluster, release on return
 	cluster.lock.Lock()
+
+	cluster.OK = false
 
 	cluster.Nodes = make(map[string]*Node)
 
@@ -67,6 +72,10 @@ func (cluster *Cluster) Sync() error {
 	if err != nil {
 		return err
 	}
+
+	cluster.lock.Lock()
+	cluster.OK = true
+	cluster.lock.Unlock()
 
 	return nil
 }
@@ -110,6 +119,7 @@ func (cluster *Cluster) GetNode(hostName string) (*Node, error) {
 	// aquire cluster lock
 	cluster.lock.Lock()
 	defer cluster.lock.Unlock()
+
 	// get host
 	host, ok := cluster.Nodes[hostName]
 	if !ok {
@@ -202,10 +212,10 @@ func (cluster *Cluster) RebuildNode(hostName string) error {
 }
 
 func (host *Node) GetInstance(vmid uint) (*Instance, error) {
-
 	// aquire host lock
 	host.lock.Lock()
 	defer host.lock.Unlock()
+
 	// get instance
 	instance, ok := host.Instances[InstanceID(vmid)]
 	if !ok {

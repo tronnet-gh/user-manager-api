@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"maps"
 	"net/http"
 	"strconv"
 	"strings"
@@ -200,9 +201,7 @@ func (host *Node) VirtualMachine(VMID uint) (*Instance, error) {
 
 func MergeVMDisksAndUnused(vmc *proxmox.VirtualMachineConfig) map[string]string {
 	mergedDisks := vmc.MergeDisks()
-	for k, v := range vmc.Unuseds {
-		mergedDisks[k] = v
-	}
+	maps.Copy(mergedDisks, vmc.Unuseds)
 	return mergedDisks
 }
 
@@ -247,12 +246,8 @@ func (host *Node) Container(VMID uint) (*Instance, error) {
 
 func MergeCTDisksAndUnused(cc *proxmox.ContainerConfig) map[string]string {
 	mergedDisks := make(map[string]string)
-	for k, v := range cc.Unuseds {
-		mergedDisks[k] = v
-	}
-	for k, v := range cc.Mps {
-		mergedDisks[k] = v
-	}
+	maps.Copy(mergedDisks, cc.Unuseds)
+	maps.Copy(mergedDisks, cc.Mps)
 	mergedDisks["rootfs"] = cc.RootFS
 	return mergedDisks
 }

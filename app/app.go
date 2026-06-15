@@ -76,6 +76,11 @@ func Run() {
 	})
 
 	router.GET("/", func(c *gin.Context) {
+		if !cluster.OK {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "cluster state is invalid"})
+			return
+		}
+
 		v, err := cluster.Get()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -87,10 +92,13 @@ func Run() {
 	})
 
 	router.GET("/nodes/:node", func(c *gin.Context) {
+		if !cluster.OK {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "cluster state is invalid"})
+			return
+		}
+
 		nodeid := c.Param("node")
-
 		node, err := cluster.GetNode(nodeid)
-
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
@@ -101,15 +109,18 @@ func Run() {
 	})
 
 	router.GET("/nodes/:node/instances/:vmid", func(c *gin.Context) {
+		if !cluster.OK {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "cluster state is invalid"})
+			return
+		}
+
 		nodeid := c.Param("node")
 		vmid, err := strconv.ParseUint(c.Param("vmid"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s could not be converted to vmid (uint)", c.Param("instance"))})
 			return
 		}
-
 		node, err := cluster.GetNode(nodeid)
-
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
