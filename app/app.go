@@ -36,7 +36,7 @@ func Run() {
 	cluster.Init(client)
 	start := time.Now()
 	log.Printf("[INFO] starting cluster sync\n")
-	err := cluster.Sync()
+	err := SyncCluster(&cluster)
 	if err != nil {
 		log.Printf("[Error] error encountered while syncing cluster: %s", err)
 	} else {
@@ -55,7 +55,7 @@ func Run() {
 			case <-ticker.C:
 				start := time.Now()
 				log.Printf("[INFO] starting cluster sync\n")
-				err := cluster.Sync()
+				err := SyncCluster(&cluster)
 				if err != nil {
 					log.Printf("[ERR ] error encountered while syncing cluster: %s", err)
 				} else {
@@ -139,7 +139,7 @@ func Run() {
 	router.POST("/sync", func(c *gin.Context) {
 		start := time.Now()
 		log.Printf("[INFO] starting cluster sync\n")
-		err := cluster.Sync()
+		err := SyncCluster(&cluster)
 		if err != nil {
 			log.Printf("[ERR ] failed to sync cluster: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -151,64 +151,33 @@ func Run() {
 	})
 
 	router.POST("/nodes/:node/sync", func(c *gin.Context) {
-		nodeid := c.Param("node")
+		nodeName := c.Param("node")
 		start := time.Now()
-		log.Printf("[INFO] starting %s sync\n", nodeid)
-		err := cluster.RebuildNode(nodeid)
+		log.Printf("[INFO] starting %s sync\n", nodeName)
+		err := SyncNode(&cluster, nodeName)
 		if err != nil {
-			log.Printf("[ERR ] failed to sync %s: %s", nodeid, err.Error())
+			log.Printf("[ERR ] failed to sync %s: %s", nodeName, err.Error())
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		}
-
-		// after synchronizing a node, resync pool membership
-		err = cluster.ResolvePoolMembership()
-		if err != nil {
-			log.Printf("[ERR ] failed to sync %s: %s", nodeid, err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		} else {
-			log.Printf("[INFO] synced %s in %fs\n", nodeid, time.Since(start).Seconds())
+			log.Printf("[INFO] synced %s in %fs\n", nodeName, time.Since(start).Seconds())
 		}
 	})
 
 	router.POST("/nodes/:node/instances/:vmid/sync", func(c *gin.Context) {
-		nodeid := c.Param("node")
+		nodeName := c.Param("node")
 		vmid, err := strconv.ParseUint(c.Param("vmid"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("%s could not be converted to vmid (uint)", c.Param("instance"))})
 			return
 		}
-
-		//go func() {
 		start := time.Now()
-		log.Printf("[INFO] starting %s.%d sync\n", nodeid, vmid)
-
-		node, err := cluster.GetNode(nodeid)
+		log.Printf("[INFO] starting %s.%d sync\n", nodeName, vmid)
+		err = SyncInstance(&cluster, nodeName, uint(vmid))
 		if err != nil {
-			log.Printf("[ERR ] failed to sync %s.%d: %s", nodeid, vmid, err.Error())
+			log.Printf("[ERR ] failed to sync %s.%d: %s", nodeName, vmid, err.Error())
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-
-		instance, err := node.GetInstance(uint(vmid))
-		if err != nil {
-			log.Printf("[ERR ] failed to sync %s.%d: %s", nodeid, vmid, err.Error())
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-
-		err = node.RebuildInstance(instance.Type, uint(vmid))
-		if err != nil {
-			log.Printf("[ERR ] failed to sync %s.%d: %s", nodeid, vmid, err.Error())
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		}
-
-		// after synchronizing a node, resync pool membership
-		err = cluster.ResolvePoolMembership()
-		if err != nil {
-			log.Printf("[ERR ] failed to sync %s: %s", nodeid, err.Error())
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		} else {
-			log.Printf("[INFO] synced %s in %fs\n", nodeid, time.Since(start).Seconds())
+			log.Printf("[INFO] synced %s in %fs\n", nodeName, time.Since(start).Seconds())
 		}
 	})
 

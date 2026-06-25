@@ -28,6 +28,7 @@ type Node struct {
 	Instances map[InstanceID]*Instance `json:"instances"`
 	pvenode   *proxmox.Node
 	storage   map[string][]*proxmox.StorageContent
+	cluster   *Cluster
 }
 
 type InstanceID = paas.InstanceID
@@ -45,6 +46,7 @@ type Instance struct {
 	configNets     map[string]string
 	configHostPCIs map[string]string
 	configBoot     string
+	node           *Node
 }
 
 type VolumeID = paas.VolumeID
