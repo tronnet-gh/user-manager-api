@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-const MiB = 1024 * 1024
-
 type Config struct {
 	ListenPort int `json:"listenPort"`
 	PVE        struct {
@@ -64,12 +62,4 @@ func AnyPrefixes(s string, prefixes []string) string {
 	}
 
 	return ""
-}
-
-func SafeUint64(i int) uint64 {
-	if i < 0 {
-		log.Printf("Tried to cast %d to uint64", i)
-		return 0
-	}
-	return uint64(i)
 }

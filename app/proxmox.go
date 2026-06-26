@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	paas "proxmoxaas-common-lib"
+
 	"github.com/luthermonson/go-proxmox"
 	"golang.org/x/sync/errgroup"
 )
@@ -150,7 +152,7 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 
 	// set host basic values
 	host.Name = node.Name
-	host.Cores = SafeUint64(node.CPUInfo.CPUs)
+	host.Cores = paas.SafeUint64(node.CPUInfo.CPUs)
 	host.Memory = node.Memory.Total
 	host.Swap = node.Swap.Total
 	host.pvenode = node
@@ -190,8 +192,8 @@ func (host *Node) VirtualMachine(VMID uint) (*Instance, error) {
 
 	instance.Name = vm.Name
 	instance.Proctype = vm.VirtualMachineConfig.CPU
-	instance.Cores = SafeUint64(*vm.VirtualMachineConfig.Cores)
-	instance.Memory = SafeUint64(int(vm.VirtualMachineConfig.Memory)) * MiB
+	instance.Cores = paas.SafeUint64(*vm.VirtualMachineConfig.Cores)
+	instance.Memory = paas.SafeUint64(int(vm.VirtualMachineConfig.Memory)) * paas.MiB
 	instance.Volumes = make(map[VolumeID]*Volume)
 	instance.Nets = make(map[NetID]*Net)
 	instance.Devices = make(map[DeviceID]*Device)
@@ -235,9 +237,9 @@ func (host *Node) Container(VMID uint) (*Instance, error) {
 	instance.Type = CT
 
 	instance.Name = ct.Name
-	instance.Cores = SafeUint64(ct.ContainerConfig.Cores)
-	instance.Memory = SafeUint64(*ct.ContainerConfig.Memory) * MiB
-	instance.Swap = SafeUint64(*ct.ContainerConfig.Swap) * MiB
+	instance.Cores = paas.SafeUint64(ct.ContainerConfig.Cores)
+	instance.Memory = paas.SafeUint64(*ct.ContainerConfig.Memory) * paas.MiB
+	instance.Swap = paas.SafeUint64(*ct.ContainerConfig.Swap) * paas.MiB
 	instance.Volumes = make(map[VolumeID]*Volume)
 	instance.Nets = make(map[NetID]*Net)
 
