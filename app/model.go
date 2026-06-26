@@ -110,6 +110,9 @@ func (cluster *Cluster) ResolvePoolMembership() error {
 				if !ok {
 					return fmt.Errorf("Instance %d claimed to be in node %s but was not", member.VMID, node.Name)
 				}
+				if instance.Pool != "" {
+					return fmt.Errorf("Instance %d is in pools %s and %s which is not supported", member.VMID, instance.Pool, pool.PoolID)
+				}
 				instance.Pool = pool.PoolID
 				log.Printf("[INFO] resolved pool membership for vmid=%d pool=%s", member.VMID, pool.PoolID)
 			}
