@@ -90,6 +90,13 @@ func (cluster *Cluster) ResolvePoolMembership() error {
 	cluster.lock.Lock()
 	defer cluster.lock.Unlock()
 
+	//clear existing pool memberships
+	for _, node := range cluster.Nodes {
+		for _, instance := range node.Instances {
+			instance.Pool = ""
+		}
+	}
+
 	//resolve pool membership
 	pools, err := cluster.pve.client.Pools(context.Background())
 	if err != nil {
@@ -110,7 +117,7 @@ func (cluster *Cluster) ResolvePoolMembership() error {
 				if !ok {
 					return fmt.Errorf("Instance %d claimed to be in node %s but was not", member.VMID, node.Name)
 				}
-				if instance.Pool != "" {
+				if instance.Pool != "" { // enforces that an instance cannot be in two different pools
 					return fmt.Errorf("Instance %d is in pools %s and %s which is not supported", member.VMID, instance.Pool, pool.PoolID)
 				}
 				instance.Pool = pool.PoolID
