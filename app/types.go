@@ -14,10 +14,11 @@ import (
 // override Nodes map to new custom Node type
 type Cluster struct {
 	paas.Cluster
-	lock  sync.Mutex
-	pve   ProxmoxClient
-	Nodes map[string]*Node `json:"nodes"`
-	OK    bool
+	lock      sync.Mutex
+	pve       ProxmoxClient
+	NodesLock sync.Mutex
+	Nodes     map[string]*Node `json:"nodes"`
+	OK        bool
 }
 
 // add mutex and pve api Node object
@@ -25,10 +26,11 @@ type Cluster struct {
 type Node struct {
 	lock sync.Mutex
 	paas.Node
-	Instances map[InstanceID]*Instance `json:"instances"`
-	pvenode   *proxmox.Node
-	storage   map[string][]*proxmox.StorageContent
-	cluster   *Cluster
+	InstancesLock sync.Mutex               // lock for Instances map
+	Instances     map[InstanceID]*Instance `json:"instances"`
+	pvenode       *proxmox.Node
+	storage       map[string][]*proxmox.StorageContent
+	cluster       *Cluster
 }
 
 type InstanceID = paas.InstanceID
@@ -41,6 +43,9 @@ const CT InstanceType = paas.CT
 type Instance struct {
 	lock sync.Mutex
 	paas.Instance
+	VolumesLock    sync.Mutex // lock for Volumes map
+	NetsLock       sync.Mutex // lock for Nets map
+	DevicesLock    sync.Mutex // lock for Devices map
 	pveconfig      any
 	configDisks    map[string]string
 	configNets     map[string]string

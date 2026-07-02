@@ -186,8 +186,6 @@ func (cluster *Cluster) BuildNode(nodeName string) error {
 		return nil
 	}
 
-	cluster.Nodes[nodeName] = node
-
 	// get node's VMs
 	vms, err := node.VirtualMachines()
 	if err != nil {
@@ -241,6 +239,10 @@ func (cluster *Cluster) BuildNode(nodeName string) error {
 	}
 
 	node.cluster = cluster
+
+	cluster.NodesLock.Lock()
+	cluster.Nodes[nodeName] = node
+	cluster.NodesLock.Unlock()
 
 	return nil
 }
@@ -317,11 +319,10 @@ func (node *Node) BuildInstance(instancetype InstanceType, vmid uint) error {
 
 	if err != nil && node.Instances[instanceID] != nil { // node is unreachable and did exist previously
 		// assume the instance is gone and delete from cluster
+		log.Printf("[ERR ] error retrieving %s.%d: %s", node.Name, instanceID, err)
 		delete(node.Instances, instanceID)
 		return nil
 	}
-
-	node.Instances[instanceID] = instance
 
 	for volid := range instance.configDisks {
 		wg.Go(func() error {
@@ -363,11 +364,16 @@ func (node *Node) BuildInstance(instancetype InstanceType, vmid uint) error {
 		err = instance.RebuildBoot(node)
 		if err != nil {
 			log.Printf("[ERR ] error rebuilding boot: %s", err)
+			return err
 		}
-		return err
 	}
 
 	instance.node = node
+
+	node.InstancesLock.Lock()
+	node.Instances[instanceID] = instance
+	node.InstancesLock.Unlock()
+
 	return nil
 }
 
@@ -382,7 +388,10 @@ func (instance *Instance) RebuildVolume(node *Node, volid string) error {
 	voltype := AnyPrefixes(volid, paas.VolumeTypes)
 	volume.Type = voltype
 	volume.Volume_ID = VolumeID(volid)
+
+	instance.VolumesLock.Lock()
 	instance.Volumes[VolumeID(volid)] = volume
+	instance.VolumesLock.Unlock()
 
 	return nil
 }
@@ -396,7 +405,9 @@ func (instance *Instance) RebuildNet(node *Node, netid string) error {
 		return nil
 	}
 
+	instance.NetsLock.Lock()
 	instance.Nets[NetID(netid)] = netinfo
+	instance.NetsLock.Unlock()
 
 	return nil
 }
@@ -420,7 +431,9 @@ func (instance *Instance) RebuildDevice(node *Node, deviceid string) error {
 		// sub function assignment not supported yet
 	}
 
+	instance.DevicesLock.Lock()
 	instance.Devices[DeviceID(instanceDeviceBusID)].Device_ID = DeviceID(deviceid)
+	instance.DevicesLock.Unlock()
 
 	return nil
 }
