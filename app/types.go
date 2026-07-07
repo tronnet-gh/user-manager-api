@@ -65,10 +65,12 @@ type FunctionID = paas.FunctionID
 type Function = paas.Function
 type BootOrder = paas.BootOrder
 
+// wraps a mutex and mutex state value under a single mutex interface with support for IsLocked check
+// highly cursed
 type MutexWithCheck struct {
-	ml sync.Mutex
-	v  sync.Mutex
-	l  bool
+	ml sync.Mutex // wrapper mutex
+	v  sync.Mutex // wrapped mutex
+	l  bool       // wrapped state
 }
 
 func (m *MutexWithCheck) Lock() {
