@@ -73,8 +73,8 @@ func (pve ProxmoxClient) Nodes() ([]string, error) {
 }
 
 // Gets a Node's resources but does not recursively expand instances
-func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
-	host := Node{}
+func (pve ProxmoxClient) Node(host *Node, nodeName string) error {
+	//host := Node{}
 	host.Devices = make(map[DeviceBus]*Device)
 	host.Instances = make(map[InstanceID]*Instance)
 	host.storage = make(map[string][]*proxmox.StorageContent)
@@ -82,14 +82,14 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 	// get pve node
 	node, err := pve.client.Node(context.Background(), nodeName)
 	if err != nil {
-		return &host, err
+		return err
 	}
 
 	// get pve node devices
 	devices := []PVEDevice{}
 	err = pve.client.Get(context.Background(), fmt.Sprintf("/nodes/%s/hardware/pci", nodeName), &devices)
 	if err != nil {
-		return &host, err
+		return err
 	}
 	// populate host devices from pve node devices
 	for _, device := range devices {
@@ -119,7 +119,7 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 	proctypes := []PVEProctype{}
 	err = pve.client.Get(context.Background(), fmt.Sprintf("/nodes/%s/capabilities/qemu/cpu", nodeName), &proctypes)
 	if err != nil {
-		return &host, err
+		return err
 	}
 	// populate host proctypes from pve node proctypes
 	for _, proctype := range proctypes {
@@ -130,7 +130,7 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 	wg, _ := errgroup.WithContext(context.Background())
 	storages, err := node.Storages(context.Background())
 	if err != nil {
-		return &host, err
+		return err
 	}
 	// populate host storage content from pve node storages
 	for _, storage := range storages {
@@ -147,7 +147,7 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 	}
 	err = wg.Wait()
 	if err != nil {
-		return &host, err
+		return err
 	}
 
 	// set host basic values
@@ -157,7 +157,7 @@ func (pve ProxmoxClient) Node(nodeName string) (*Node, error) {
 	host.Swap = node.Swap.Total
 	host.pvenode = node
 
-	return &host, err
+	return err
 }
 
 // Get all VM IDs on specified host
@@ -174,11 +174,10 @@ func (host *Node) VirtualMachines() ([]uint, error) {
 }
 
 // Get a VM's CPU, Memory but does not recursively link Devices, Disks, Drives, Nets
-func (host *Node) VirtualMachine(VMID InstanceID) (*Instance, error) {
-	instance := Instance{}
+func (host *Node) VirtualMachine(instance *Instance, VMID InstanceID) error {
 	vm, err := host.pvenode.VirtualMachine(context.Background(), int(VMID))
 	if err != nil {
-		return &instance, err
+		return err
 	}
 
 	config := vm.VirtualMachineConfig
@@ -198,7 +197,7 @@ func (host *Node) VirtualMachine(VMID InstanceID) (*Instance, error) {
 	instance.Nets = make(map[NetID]*Net)
 	instance.Devices = make(map[DeviceID]*Device)
 
-	return &instance, nil
+	return nil
 }
 
 func MergeVMDisksAndUnused(vmc *proxmox.VirtualMachineConfig) map[string]string {
@@ -221,11 +220,10 @@ func (host *Node) Containers() ([]uint, error) {
 }
 
 // Get a CT's CPU, Memory, Swap but does not recursively link Devices, Disks, Drives, Nets
-func (host *Node) Container(VMID InstanceID) (*Instance, error) {
-	instance := Instance{}
+func (host *Node) Container(instance *Instance, VMID InstanceID) error {
 	ct, err := host.pvenode.Container(context.Background(), int(VMID))
 	if err != nil {
-		return &instance, err
+		return err
 	}
 
 	config := ct.ContainerConfig
@@ -243,7 +241,7 @@ func (host *Node) Container(VMID InstanceID) (*Instance, error) {
 	instance.Volumes = make(map[VolumeID]*Volume)
 	instance.Nets = make(map[NetID]*Net)
 
-	return &instance, nil
+	return nil
 }
 
 func MergeCTDisksAndUnused(cc *proxmox.ContainerConfig) map[string]string {

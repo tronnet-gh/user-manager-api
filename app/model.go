@@ -28,6 +28,9 @@ func (cluster *Cluster) Get() (*Cluster, error) {
 }
 
 func (cluster *Cluster) Sync() error {
+	cluster.lock.Lock()
+	defer cluster.lock.Unlock()
+
 	err := cluster.Build()
 	if err != nil {
 		cluster.OK = false
@@ -45,10 +48,14 @@ func (cluster *Cluster) Sync() error {
 }
 
 // hard sync cluster
+// caller MUST lock cluster BEFORE entering
 func (cluster *Cluster) Build() error {
-	// aquire lock on cluster, release on return
-	cluster.lock.Lock()
-	defer cluster.lock.Unlock()
+	// check to confirm cluster is locked before making any changes
+	if !cluster.lock.IsLocked() {
+		return fmt.Errorf("cluster was not locked before calling cluster.Sync()")
+	}
+
+	start := time.Now()
 
 	cluster.Nodes = make(map[string]*Node)
 
@@ -57,17 +64,16 @@ func (cluster *Cluster) Build() error {
 	// get all nodes
 	nodes, err := cluster.pve.Nodes()
 	if err != nil {
-		cluster.lock.Unlock()
 		return err
 	}
 
 	// for each node:
 	for _, nodeName := range nodes {
 		wg.Go(func() error {
-			start := time.Now()
-
 			// rebuild node
 			node := Node{}
+			node.lock.Lock()
+
 			node.Name = nodeName
 			node.cluster = cluster
 
@@ -75,13 +81,13 @@ func (cluster *Cluster) Build() error {
 			//err := cluster.BuildNode(nodeName)
 			if err != nil { // if an error was encountered, continue and log the error
 				log.Printf("[ERR ] error encountered while syncing node %s: %s", nodeName, err)
-			} else {
-				log.Printf("[INFO] synced node %s in %d ms", nodeName, time.Since(start).Milliseconds())
 			}
 
 			cluster.NodesLock.Lock()
 			cluster.Nodes[nodeName] = &node
 			cluster.NodesLock.Unlock()
+
+			node.lock.Unlock()
 
 			return err
 		})
@@ -93,13 +99,20 @@ func (cluster *Cluster) Build() error {
 		return err
 	}
 
+	log.Printf("[INFO] built cluster in %d ms", time.Since(start).Milliseconds())
+
 	return nil
 }
 
+// resolve membership of instances to pools
+// caller MUST lock cluster BEFORE entering
 func (cluster *Cluster) ResolvePoolMembership() error {
-	// aquire lock on cluster, release on return
-	cluster.lock.Lock()
-	defer cluster.lock.Unlock()
+	// check to confirm cluster is locked before making any changes
+	if !cluster.lock.IsLocked() {
+		return fmt.Errorf("cluster was not locked before calling cluster.ResolvePoolMembership()")
+	}
+
+	start := time.Now()
 
 	//clear existing pool memberships
 	for _, node := range cluster.Nodes {
@@ -137,6 +150,8 @@ func (cluster *Cluster) ResolvePoolMembership() error {
 		}
 	}
 
+	log.Printf("[INFO] resovled cluster instance pool memberships in %d ms", time.Since(start).Milliseconds())
+
 	return nil
 }
 
@@ -163,14 +178,16 @@ func (cluster *Cluster) GetNode(nodeName string) (*Node, error) {
 	}
 }
 
-func SyncNode(cluster *Cluster, nodeName string) error {
-	node, err := cluster.GetNode(nodeName)
-	if err != nil {
-		cluster.OK = false
-		return err
-	}
+func (node *Node) Sync() error {
+	node.lock.Lock()
+	defer node.lock.Unlock()
 
-	err = node.Build()
+	cluster := node.cluster
+
+	cluster.lock.Lock()
+	defer cluster.lock.Unlock()
+
+	err := node.Build()
 	if err != nil {
 		cluster.OK = false
 		return err
@@ -188,20 +205,23 @@ func SyncNode(cluster *Cluster, nodeName string) error {
 
 // hard sync node
 // returns error if the node could not be reached
+// caller MUST lock node BEFORE entering
 func (node *Node) Build() error {
+	// check to confirm cluster is locked before making any changes
+	if !node.lock.IsLocked() {
+		return fmt.Errorf("node was not locked before calling node.Build()")
+	}
+
+	start := time.Now()
+
 	nodeName := node.Name
 	cluster := node.cluster
 
-	n, err := cluster.pve.Node(nodeName)
+	err := cluster.pve.Node(node, nodeName)
 	if err != nil && cluster.Nodes[nodeName] == nil { // node is unreachable and did not exist previously
 		// return an error because we requested to sync a node that was not already in the cluster
 		return fmt.Errorf("error retrieving %s: %s", nodeName, err.Error())
 	}
-	*node = *n // copies lock value, which should be unlocked
-
-	// aquire lock on node, release on return
-	node.lock.Lock()
-	defer node.lock.Unlock()
 
 	wg, _ := errgroup.WithContext(context.Background())
 
@@ -219,10 +239,11 @@ func (node *Node) Build() error {
 	}
 	for _, vmid := range vms {
 		wg.Go(func() error {
-			start := time.Now()
 
 			instanceID := InstanceID(paas.SafeUint64(vmid))
 			instance := Instance{}
+			instance.lock.Lock()
+
 			instance.VMID = instanceID
 			instance.Type = VM
 			instance.node = node
@@ -230,13 +251,13 @@ func (node *Node) Build() error {
 			err := instance.Build()
 			if err != nil { // if an error was encountered, continue and log the error
 				log.Printf("[ERR ] error encountered while syncing vm %s.%d: %s", nodeName, vmid, err)
-			} else {
-				log.Printf("[INFO] synced vm %s.%d in %d ms", nodeName, vmid, time.Since(start).Milliseconds())
 			}
 
 			node.InstancesLock.Lock()
 			node.Instances[instanceID] = &instance
 			node.InstancesLock.Unlock()
+
+			instance.lock.Unlock()
 
 			return nil
 		})
@@ -249,10 +270,10 @@ func (node *Node) Build() error {
 	}
 	for _, vmid := range cts {
 		wg.Go(func() error {
-			start := time.Now()
-
 			instanceID := InstanceID(paas.SafeUint64(vmid))
 			instance := Instance{}
+			instance.lock.Lock()
+
 			instance.VMID = instanceID
 			instance.Type = CT
 			instance.node = node
@@ -260,14 +281,13 @@ func (node *Node) Build() error {
 			err := instance.Build()
 			if err != nil { // if an error was encountered, continue and log the error
 				log.Printf("[ERR ] error encountered while syncing ct %s.%d: %s", nodeName, vmid, err)
-			} else {
-				log.Printf("[INFO] synced ct %s.%d in %d ms", nodeName, vmid, time.Since(start).Milliseconds())
-
 			}
 
 			node.InstancesLock.Lock()
 			node.Instances[instanceID] = &instance
 			node.InstancesLock.Unlock()
+
+			instance.lock.Unlock()
 
 			return nil
 		})
@@ -289,9 +309,7 @@ func (node *Node) Build() error {
 
 	node.cluster = cluster
 
-	//cluster.NodesLock.Lock()
-	//cluster.Nodes[nodeName] = node
-	//cluster.NodesLock.Unlock()
+	log.Printf("[INFO] built node %s in %d ms", node.Name, time.Since(start).Milliseconds())
 
 	return nil
 }
@@ -328,14 +346,16 @@ func (cluster *Cluster) GetInstance(nodeName string, vmid uint64) (*Instance, er
 	}
 }
 
-func SyncInstance(cluster *Cluster, nodeName string, vmid uint64) error {
-	instance, err := cluster.GetInstance(nodeName, vmid)
-	if err != nil {
-		cluster.OK = false
-		return err
-	}
+func (instance *Instance) Sync() error {
+	instance.lock.Lock()
+	defer instance.lock.Unlock()
 
-	err = instance.Build()
+	cluster := instance.node.cluster
+
+	cluster.lock.Lock()
+	defer cluster.lock.Unlock()
+
+	err := instance.Build()
 	if err != nil {
 		cluster.OK = false
 		return err
@@ -353,17 +373,24 @@ func SyncInstance(cluster *Cluster, nodeName string, vmid uint64) error {
 
 // hard sync instance
 // returns error if the instance could not be reached
+// caller MUST lock cluster BEFORE entering
 func (instance *Instance) Build() error {
+	// check to confirm cluster is locked before making any changes
+	if !instance.lock.IsLocked() {
+		return fmt.Errorf("instance was not locked before calling instance.Build()")
+	}
+
+	start := time.Now()
+
 	vmid := instance.VMID
 	instancetype := instance.Type
 	node := instance.node
-	var i *Instance
 	var err error
 	switch instancetype {
 	case VM:
-		i, err = node.VirtualMachine(vmid)
+		err = node.VirtualMachine(instance, vmid)
 	case CT:
-		i, err = node.Container(vmid)
+		err = node.Container(instance, vmid)
 
 	}
 
@@ -371,12 +398,6 @@ func (instance *Instance) Build() error {
 		// return an error because we requested to sync an instance that was not already in the cluster
 		return fmt.Errorf("error retrieving %s.%d: %s", node.Name, vmid, err.Error())
 	}
-
-	*instance = *i // copiues lock vlaue which should be unlocked
-
-	// aquire lock on instance, release on return
-	instance.lock.Lock()
-	defer instance.lock.Unlock()
 
 	wg, _ := errgroup.WithContext(context.Background())
 
@@ -432,6 +453,8 @@ func (instance *Instance) Build() error {
 	}
 
 	instance.node = node
+
+	log.Printf("[INFO] built instance %s.%d in %d ms", instance.node.Name, instance.VMID, time.Since(start).Milliseconds())
 
 	return nil
 }

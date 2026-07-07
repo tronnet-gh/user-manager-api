@@ -14,7 +14,7 @@ import (
 // override Nodes map to new custom Node type
 type Cluster struct {
 	paas.Cluster
-	lock      sync.Mutex
+	lock      MutexWithCheck
 	pve       ProxmoxClient
 	NodesLock sync.Mutex
 	Nodes     map[string]*Node `json:"nodes"`
@@ -24,8 +24,8 @@ type Cluster struct {
 // add mutex and pve api Node object
 // override Instances map to new custom Instance type
 type Node struct {
-	lock sync.Mutex
 	paas.Node
+	lock          MutexWithCheck
 	InstancesLock sync.Mutex               // lock for Instances map
 	Instances     map[InstanceID]*Instance `json:"instances"`
 	pvenode       *proxmox.Node
@@ -41,8 +41,8 @@ const CT InstanceType = paas.CT
 
 // add mutex and various config objects
 type Instance struct {
-	lock sync.Mutex
 	paas.Instance
+	lock           MutexWithCheck
 	VolumesLock    sync.Mutex // lock for Volumes map
 	NetsLock       sync.Mutex // lock for Nets map
 	DevicesLock    sync.Mutex // lock for Devices map
@@ -64,3 +64,32 @@ type Device = paas.Device
 type FunctionID = paas.FunctionID
 type Function = paas.Function
 type BootOrder = paas.BootOrder
+
+type MutexWithCheck struct {
+	ml sync.Mutex
+	v  sync.Mutex
+	l  bool
+}
+
+func (m *MutexWithCheck) Lock() {
+	m.ml.Lock()
+	defer m.ml.Unlock()
+
+	m.v.Lock()
+	m.l = true
+}
+
+func (m *MutexWithCheck) Unlock() {
+	m.ml.Lock()
+	defer m.ml.Unlock()
+
+	m.v.Unlock()
+	m.l = false
+}
+
+func (m *MutexWithCheck) IsLocked() bool {
+	m.ml.Lock()
+	defer m.ml.Unlock()
+
+	return m.l
+}
