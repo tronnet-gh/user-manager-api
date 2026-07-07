@@ -76,11 +76,6 @@ func Run() {
 	})
 
 	router.GET("/", func(c *gin.Context) {
-		if !cluster.OK {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "cluster state is invalid"})
-			return
-		}
-
 		v, err := cluster.Get()
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -92,11 +87,6 @@ func Run() {
 	})
 
 	router.GET("/nodes/:node", func(c *gin.Context) {
-		if !cluster.OK {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "cluster state is invalid"})
-			return
-		}
-
 		nodeid := c.Param("node")
 		node, err := cluster.GetNode(nodeid)
 		if err != nil {
@@ -109,30 +99,19 @@ func Run() {
 	})
 
 	router.GET("/nodes/:node/instances/:vmid", func(c *gin.Context) {
-		if !cluster.OK {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "cluster state is invalid"})
-			return
-		}
-
 		nodeid := c.Param("node")
 		vmid, err := strconv.ParseUint(c.Param("vmid"), 10, 64)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s could not be converted to vmid (uint)", c.Param("instance"))})
 			return
 		}
-		node, err := cluster.GetNode(nodeid)
+		instance, err := cluster.GetInstance(nodeid, vmid)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 			return
 		} else {
-			instance, err := node.GetInstance(uint(vmid))
-			if err != nil {
-				c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-				return
-			} else {
-				c.JSON(http.StatusOK, gin.H{"instance": instance})
-				return
-			}
+			c.JSON(http.StatusOK, gin.H{"instance": instance})
+			return
 		}
 	})
 
@@ -172,7 +151,7 @@ func Run() {
 		}
 		start := time.Now()
 		log.Printf("[INFO] starting %s.%d sync\n", nodeName, vmid)
-		err = SyncInstance(&cluster, nodeName, uint(vmid))
+		err = SyncInstance(&cluster, nodeName, vmid)
 		if err != nil {
 			log.Printf("[ERR ] failed to sync %s.%d: %s", nodeName, vmid, err.Error())
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})

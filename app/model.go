@@ -28,15 +28,15 @@ func (cluster *Cluster) Get() (*Cluster, error) {
 }
 
 func SyncCluster(cluster *Cluster) error {
-	cluster.OK = false
-
 	err := cluster.BuildCluster()
 	if err != nil {
+		cluster.OK = false
 		return err
 	}
 
 	err = cluster.ResolvePoolMembership()
 	if err != nil {
+		cluster.OK = false
 		return err
 	}
 
@@ -135,6 +135,10 @@ func (cluster *Cluster) GetNode(nodeName string) (*Node, error) {
 	cluster.lock.Lock()
 	defer cluster.lock.Unlock()
 
+	if !cluster.OK {
+		return nil, fmt.Errorf("cluster state is invalid")
+	}
+
 	// get node
 	node, ok := cluster.Nodes[nodeName]
 	if !ok {
@@ -149,15 +153,15 @@ func (cluster *Cluster) GetNode(nodeName string) (*Node, error) {
 }
 
 func SyncNode(cluster *Cluster, nodeName string) error {
-	cluster.OK = false
-
 	err := cluster.BuildNode(nodeName)
 	if err != nil {
+		cluster.OK = false
 		return err
 	}
 
 	err = cluster.ResolvePoolMembership()
 	if err != nil {
+		cluster.OK = false
 		return err
 	}
 
@@ -195,7 +199,7 @@ func (cluster *Cluster) BuildNode(nodeName string) error {
 	for _, vmid := range vms {
 		wg.Go(func() error {
 			start := time.Now()
-			err := node.BuildInstance(VM, vmid)
+			err := node.BuildInstance(VM, paas.SafeUint64(vmid))
 			if err != nil { // if an error was encountered, continue and log the error
 				log.Printf("[ERR ] error encountered while syncing vm %s.%d: %s", nodeName, vmid, err)
 			} else {
@@ -213,7 +217,7 @@ func (cluster *Cluster) BuildNode(nodeName string) error {
 	for _, vmid := range cts {
 		wg.Go(func() error {
 			start := time.Now()
-			err := node.BuildInstance(CT, vmid)
+			err := node.BuildInstance(CT, paas.SafeUint64(vmid))
 			if err != nil { // if an error was encountered, continue and log the error
 				log.Printf("[ERR ] error encountered while syncing ct %s.%d: %s", nodeName, vmid, err)
 			} else {
@@ -247,7 +251,21 @@ func (cluster *Cluster) BuildNode(nodeName string) error {
 	return nil
 }
 
-func (node *Node) GetInstance(vmid uint) (*Instance, error) {
+func (cluster *Cluster) GetInstance(nodeName string, vmid uint64) (*Instance, error) {
+	// aquire cluster lock
+	cluster.lock.Lock()
+	defer cluster.lock.Unlock()
+
+	if !cluster.OK {
+		return nil, fmt.Errorf("cluster state is invalid")
+	}
+
+	// get node
+	node, ok := cluster.Nodes[nodeName]
+	if !ok {
+		return nil, fmt.Errorf("%s not in cluster", nodeName)
+	}
+
 	// aquire node lock
 	node.lock.Lock()
 	defer node.lock.Unlock()
@@ -265,26 +283,28 @@ func (node *Node) GetInstance(vmid uint) (*Instance, error) {
 	}
 }
 
-func SyncInstance(cluster *Cluster, nodeName string, vmid uint) error {
-	cluster.OK = false
-
+func SyncInstance(cluster *Cluster, nodeName string, vmid uint64) error {
 	node, err := cluster.GetNode(nodeName)
 	if err != nil {
+		cluster.OK = false
 		return err
 	}
 
-	instance, err := node.GetInstance(uint(vmid))
+	instance, err := cluster.GetInstance(nodeName, vmid)
 	if err != nil {
+		cluster.OK = false
 		return err
 	}
 
-	err = node.BuildInstance(instance.Type, uint(vmid))
+	err = node.BuildInstance(instance.Type, vmid)
 	if err != nil {
+		cluster.OK = false
 		return err
 	}
 
 	err = cluster.ResolvePoolMembership()
 	if err != nil {
+		cluster.OK = false
 		return err
 	}
 
@@ -294,7 +314,7 @@ func SyncInstance(cluster *Cluster, nodeName string, vmid uint) error {
 
 // hard sync instance
 // returns error if the instance could not be reached
-func (node *Node) BuildInstance(instancetype InstanceType, vmid uint) error {
+func (node *Node) BuildInstance(instancetype InstanceType, vmid uint64) error {
 	instanceID := InstanceID(vmid)
 	var instance *Instance
 	var err error

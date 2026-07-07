@@ -174,7 +174,7 @@ func (host *Node) VirtualMachines() ([]uint, error) {
 }
 
 // Get a VM's CPU, Memory but does not recursively link Devices, Disks, Drives, Nets
-func (host *Node) VirtualMachine(VMID uint) (*Instance, error) {
+func (host *Node) VirtualMachine(VMID uint64) (*Instance, error) {
 	instance := Instance{}
 	vm, err := host.pvenode.VirtualMachine(context.Background(), int(VMID))
 	if err != nil {
@@ -221,7 +221,7 @@ func (host *Node) Containers() ([]uint, error) {
 }
 
 // Get a CT's CPU, Memory, Swap but does not recursively link Devices, Disks, Drives, Nets
-func (host *Node) Container(VMID uint) (*Instance, error) {
+func (host *Node) Container(VMID uint64) (*Instance, error) {
 	instance := Instance{}
 	ct, err := host.pvenode.Container(context.Background(), int(VMID))
 	if err != nil {
