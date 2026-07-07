@@ -36,9 +36,9 @@ func Run() {
 	cluster.Init(client)
 	start := time.Now()
 	log.Printf("[INFO] starting cluster sync\n")
-	err := SyncCluster(&cluster)
+	err := cluster.Sync()
 	if err != nil {
-		log.Printf("[Error] error encountered while syncing cluster: %s", err)
+		log.Printf("[ERR ] error encountered while syncing cluster: %s", err)
 	} else {
 		log.Printf("[INFO] synced cluster in %d ms\n", time.Since(start).Milliseconds())
 	}
@@ -55,7 +55,7 @@ func Run() {
 			case <-ticker.C:
 				start := time.Now()
 				log.Printf("[INFO] starting cluster sync\n")
-				err := SyncCluster(&cluster)
+				err := cluster.Sync()
 				if err != nil {
 					log.Printf("[ERR ] error encountered while syncing cluster: %s", err)
 				} else {
@@ -118,7 +118,7 @@ func Run() {
 	router.POST("/sync", func(c *gin.Context) {
 		start := time.Now()
 		log.Printf("[INFO] starting cluster sync\n")
-		err := SyncCluster(&cluster)
+		err := cluster.Sync()
 		if err != nil {
 			log.Printf("[ERR ] failed to sync cluster: %s", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
