@@ -409,7 +409,7 @@ func (instance *Instance) Build() error {
 
 	for volid := range instance.configDisks {
 		wg.Go(func() error {
-			err = instance.BuildVolume(node, volid)
+			err := instance.BuildVolume(node, volid)
 			if err != nil {
 				log.Printf("[ERR ] error rebuilding volume %s: %s", volid, err)
 			}
@@ -419,7 +419,7 @@ func (instance *Instance) Build() error {
 
 	for netid := range instance.configNets {
 		wg.Go(func() error {
-			err = instance.BuildNet(node, netid)
+			err := instance.BuildNet(node, netid)
 			if err != nil {
 				log.Printf("[ERR ] error rebuilding net %s: %s", netid, err)
 				return err
@@ -430,7 +430,7 @@ func (instance *Instance) Build() error {
 
 	for deviceid := range instance.configHostPCIs {
 		wg.Go(func() error {
-			err = instance.BuildDevice(node, deviceid)
+			err := instance.BuildDevice(node, deviceid)
 			if err != nil {
 				log.Printf("[ERR ] error rebuilding pci %s: %s", deviceid, err)
 			}
@@ -444,7 +444,7 @@ func (instance *Instance) Build() error {
 	}
 
 	if instance.Type == VM {
-		err = instance.BuildBoot(node)
+		err := instance.BuildBoot(node)
 		if err != nil {
 			log.Printf("[ERR ] error rebuilding boot: %s", err)
 			return err

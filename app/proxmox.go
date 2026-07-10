@@ -140,7 +140,9 @@ func (pve ProxmoxClient) Node(host *Node, nodeName string) error {
 				if err != nil {
 					return err
 				}
+				host.storageLock.Lock()
 				host.storage[storage.Name] = content
+				host.storageLock.Unlock()
 			}
 			return nil
 		})
@@ -260,7 +262,10 @@ func GetVolumeInfo(host *Node, volume string) (*Volume, error) {
 	volumeFile := volumeObj[""]
 	volumeStorage := strings.Split(volumeFile, ":")[0]
 
+	host.storageLock.Lock()
 	storage, ok := host.storage[volumeStorage]
+	host.storageLock.Unlock()
+
 	if !ok {
 		return &volumeData, fmt.Errorf("volume %s claims to be in storage %s but storage was not found", volume, volumeStorage)
 	}

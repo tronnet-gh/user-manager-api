@@ -29,6 +29,7 @@ type Node struct {
 	InstancesLock sync.Mutex               // lock for Instances map
 	Instances     map[InstanceID]*Instance `json:"instances"`
 	pvenode       *proxmox.Node
+	storageLock   sync.Mutex
 	storage       map[string][]*proxmox.StorageContent
 	cluster       *Cluster
 }
