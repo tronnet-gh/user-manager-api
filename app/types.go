@@ -14,9 +14,9 @@ import (
 // override Nodes map to new custom Node type
 type Cluster struct {
 	paas.Cluster
-	lock      MutexWithCheck
+	lock      sync.RWMutex
 	pve       ProxmoxClient
-	NodesLock sync.Mutex
+	NodesLock sync.Mutex       // lock for Nodes map
 	Nodes     map[string]*Node `json:"nodes"`
 	OK        bool
 }
@@ -25,7 +25,7 @@ type Cluster struct {
 // override Instances map to new custom Instance type
 type Node struct {
 	paas.Node
-	lock          MutexWithCheck
+	lock          sync.RWMutex
 	InstancesLock sync.Mutex               // lock for Instances map
 	Instances     map[InstanceID]*Instance `json:"instances"`
 	pvenode       *proxmox.Node
@@ -42,7 +42,7 @@ const CT InstanceType = paas.CT
 // add mutex and various config objects
 type Instance struct {
 	paas.Instance
-	lock           MutexWithCheck
+	lock           sync.RWMutex
 	VolumesLock    sync.Mutex // lock for Volumes map
 	NetsLock       sync.Mutex // lock for Nets map
 	DevicesLock    sync.Mutex // lock for Devices map
@@ -65,33 +65,16 @@ type FunctionID = paas.FunctionID
 type Function = paas.Function
 type BootOrder = paas.BootOrder
 
-// wraps a mutex and mutex state value under a single mutex interface with support for IsLocked check
-// highly cursed
-type MutexWithCheck struct {
-	ml sync.Mutex // wrapper mutex
-	v  sync.Mutex // wrapped mutex
-	l  bool       // wrapped state
+type Callback struct {
+	f []func()
 }
 
-func (m *MutexWithCheck) Lock() {
-	m.ml.Lock()
-	defer m.ml.Unlock()
-
-	m.v.Lock()
-	m.l = true
+func (c *Callback) Add(nf func()) {
+	c.f = append(c.f, nf)
 }
 
-func (m *MutexWithCheck) Unlock() {
-	m.ml.Lock()
-	defer m.ml.Unlock()
-
-	m.v.Unlock()
-	m.l = false
-}
-
-func (m *MutexWithCheck) IsLocked() bool {
-	m.ml.Lock()
-	defer m.ml.Unlock()
-
-	return m.l
+func (c *Callback) Invoke() {
+	for _, f := range c.f {
+		f()
+	}
 }

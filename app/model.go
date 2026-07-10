@@ -16,20 +16,40 @@ func (cluster *Cluster) Init(pve ProxmoxClient) {
 	cluster.pve = pve
 }
 
-func (cluster *Cluster) Get() (*Cluster, error) {
-	// aquire cluster lock
-	cluster.lock.Lock()
-	defer cluster.lock.Unlock()
-	if cluster.OK {
-		return cluster, nil
-	} else {
+func GetCluster(callback *Callback, cluster *Cluster) (*Cluster, error) {
+	// obtain read lock on whole cluster tree
+	cluster.lock.RLock()
+	callback.Add(cluster.lock.RUnlock)
+
+	if !cluster.OK {
 		return nil, fmt.Errorf("cluster state is invalid")
 	}
+
+	for _, node := range cluster.Nodes {
+		node.lock.RLock()
+		defer node.lock.RUnlock()
+		callback.Add(node.lock.RUnlock)
+		for _, instance := range node.Instances {
+			instance.lock.RLock()
+			callback.Add(instance.lock.RUnlock)
+		}
+	}
+
+	return cluster, nil
 }
 
 func (cluster *Cluster) Sync() error {
+	// obtain write lock on whole tree
 	cluster.lock.Lock()
 	defer cluster.lock.Unlock()
+	for _, n := range cluster.Nodes {
+		n.lock.Lock()
+		defer n.lock.Unlock()
+		for _, i := range n.Instances {
+			i.lock.Lock()
+			defer i.lock.Unlock()
+		}
+	}
 
 	err := cluster.Build()
 	if err != nil {
@@ -44,17 +64,11 @@ func (cluster *Cluster) Sync() error {
 	}
 
 	cluster.OK = true
+
 	return nil
 }
 
-// hard sync cluster
-// caller MUST lock cluster BEFORE entering
 func (cluster *Cluster) Build() error {
-	// check to confirm cluster is locked before making any changes
-	if !cluster.lock.IsLocked() {
-		return fmt.Errorf("cluster was not locked before calling cluster.Sync()")
-	}
-
 	start := time.Now()
 
 	cluster.Nodes = make(map[string]*Node)
@@ -72,13 +86,11 @@ func (cluster *Cluster) Build() error {
 		wg.Go(func() error {
 			// rebuild node
 			node := Node{}
-			node.lock.Lock()
 
 			node.Name = nodeName
 			node.cluster = cluster
 
 			err := node.Build()
-			//err := cluster.BuildNode(nodeName)
 			if err != nil { // if an error was encountered, continue and log the error
 				log.Printf("[ERR ] error encountered while syncing node %s: %s", nodeName, err)
 			}
@@ -86,8 +98,6 @@ func (cluster *Cluster) Build() error {
 			cluster.NodesLock.Lock()
 			cluster.Nodes[nodeName] = &node
 			cluster.NodesLock.Unlock()
-
-			node.lock.Unlock()
 
 			return err
 		})
@@ -104,14 +114,7 @@ func (cluster *Cluster) Build() error {
 	return nil
 }
 
-// resolve membership of instances to pools
-// caller MUST lock cluster BEFORE entering
 func (cluster *Cluster) ResolvePoolMembership() error {
-	// check to confirm cluster is locked before making any changes
-	if !cluster.lock.IsLocked() {
-		return fmt.Errorf("cluster was not locked before calling cluster.ResolvePoolMembership()")
-	}
-
 	start := time.Now()
 
 	//clear existing pool memberships
@@ -155,11 +158,9 @@ func (cluster *Cluster) ResolvePoolMembership() error {
 	return nil
 }
 
-// get a node in the cluster
-func (cluster *Cluster) GetNode(nodeName string) (*Node, error) {
-	// aquire cluster lock
-	cluster.lock.Lock()
-	defer cluster.lock.Unlock()
+func GetNode(callback *Callback, cluster *Cluster, nodeName string) (*Node, error) {
+	cluster.lock.RLock()
+	callback.Add(cluster.lock.RUnlock)
 
 	if !cluster.OK {
 		return nil, fmt.Errorf("cluster state is invalid")
@@ -169,23 +170,37 @@ func (cluster *Cluster) GetNode(nodeName string) (*Node, error) {
 	node, ok := cluster.Nodes[nodeName]
 	if !ok {
 		return nil, fmt.Errorf("%s not in cluster", nodeName)
-	} else {
-		// aquire node lock to wait in case of a concurrent write
-		node.lock.Lock()
-		defer node.lock.Unlock()
-
-		return node, nil
 	}
+
+	node.lock.RLock()
+	callback.Add(node.lock.RUnlock)
+	for _, instance := range node.Instances {
+		instance.lock.RLock()
+		callback.Add(instance.lock.RUnlock)
+	}
+
+	return node, nil
 }
 
 func (node *Node) Sync() error {
-	node.lock.Lock()
-	defer node.lock.Unlock()
-
 	cluster := node.cluster
 
-	cluster.lock.Lock()
+	// obtain write lock on this node subtree, and obtain write lock all instances for ResolvePoolMembership, obtain read lock on everything else
+	cluster.lock.Lock() // todo relax
 	defer cluster.lock.Unlock()
+	for _, n := range cluster.Nodes {
+		if n != node { // if other node, read lock
+			n.lock.RLock()
+			defer n.lock.RUnlock()
+		} else { // if this node, write lock
+			n.lock.Lock()
+			defer n.lock.Unlock()
+		}
+		for _, i := range n.Instances { // need write lock on all instances
+			i.lock.Lock()
+			defer i.lock.Unlock()
+		}
+	}
 
 	err := node.Build()
 	if err != nil {
@@ -203,15 +218,7 @@ func (node *Node) Sync() error {
 	return nil
 }
 
-// hard sync node
-// returns error if the node could not be reached
-// caller MUST lock node BEFORE entering
 func (node *Node) Build() error {
-	// check to confirm cluster is locked before making any changes
-	if !node.lock.IsLocked() {
-		return fmt.Errorf("node was not locked before calling node.Build()")
-	}
-
 	start := time.Now()
 
 	nodeName := node.Name
@@ -253,9 +260,7 @@ func (node *Node) Build() error {
 				log.Printf("[ERR ] error encountered while syncing vm %s.%d: %s", nodeName, vmid, err)
 			}
 
-			node.InstancesLock.Lock()
 			node.Instances[instanceID] = &instance
-			node.InstancesLock.Unlock()
 
 			instance.lock.Unlock()
 
@@ -314,10 +319,10 @@ func (node *Node) Build() error {
 	return nil
 }
 
-func (cluster *Cluster) GetInstance(nodeName string, vmid uint64) (*Instance, error) {
-	// aquire cluster lock
-	cluster.lock.Lock()
-	defer cluster.lock.Unlock()
+func GetInstance(callback *Callback, cluster *Cluster, nodeName string, vmid uint64) (*Instance, error) {
+	// obtain read lock on whole tree, but do not hold cluster and node read lock indefinitely
+	cluster.lock.RLock()
+	callback.Add(cluster.lock.RUnlock)
 
 	if !cluster.OK {
 		return nil, fmt.Errorf("cluster state is invalid")
@@ -328,32 +333,34 @@ func (cluster *Cluster) GetInstance(nodeName string, vmid uint64) (*Instance, er
 	if !ok {
 		return nil, fmt.Errorf("%s not in cluster", nodeName)
 	}
-
-	// aquire node lock
-	node.lock.Lock()
-	defer node.lock.Unlock()
+	node.lock.RLock()
+	callback.Add(node.lock.RUnlock)
 
 	// get instance
 	instance, ok := node.Instances[InstanceID(vmid)]
 	if !ok {
 		return nil, fmt.Errorf("vmid %d not in node %s", vmid, node.Name)
 	} else {
-		// aquire instance lock to wait in case of a concurrent write
-		instance.lock.Lock()
-		defer instance.lock.Unlock()
-
+		instance.lock.RLock()
+		callback.Add(instance.lock.RUnlock)
 		return instance, nil
 	}
 }
 
 func (instance *Instance) Sync() error {
-	instance.lock.Lock()
-	defer instance.lock.Unlock()
-
 	cluster := instance.node.cluster
 
-	cluster.lock.Lock()
+	// obtain write lock on this instance subtree, and obtain write lock all instances for ResolvePoolMembership, obtain read lock on everything else
+	cluster.lock.Lock() // todo relax
 	defer cluster.lock.Unlock()
+	for _, n := range cluster.Nodes {
+		n.lock.RLock()
+		defer n.lock.RUnlock()
+		for _, i := range n.Instances { // need write lock on all instances
+			i.lock.Lock()
+			defer i.lock.Unlock()
+		}
+	}
 
 	err := instance.Build()
 	if err != nil {
@@ -371,15 +378,7 @@ func (instance *Instance) Sync() error {
 	return nil
 }
 
-// hard sync instance
-// returns error if the instance could not be reached
-// caller MUST lock cluster BEFORE entering
 func (instance *Instance) Build() error {
-	// check to confirm cluster is locked before making any changes
-	if !instance.lock.IsLocked() {
-		return fmt.Errorf("instance was not locked before calling instance.Build()")
-	}
-
 	start := time.Now()
 
 	vmid := instance.VMID
@@ -410,7 +409,7 @@ func (instance *Instance) Build() error {
 
 	for volid := range instance.configDisks {
 		wg.Go(func() error {
-			err = instance.RebuildVolume(node, volid)
+			err = instance.BuildVolume(node, volid)
 			if err != nil {
 				log.Printf("[ERR ] error rebuilding volume %s: %s", volid, err)
 			}
@@ -420,7 +419,7 @@ func (instance *Instance) Build() error {
 
 	for netid := range instance.configNets {
 		wg.Go(func() error {
-			err = instance.RebuildNet(node, netid)
+			err = instance.BuildNet(node, netid)
 			if err != nil {
 				log.Printf("[ERR ] error rebuilding net %s: %s", netid, err)
 				return err
@@ -431,7 +430,7 @@ func (instance *Instance) Build() error {
 
 	for deviceid := range instance.configHostPCIs {
 		wg.Go(func() error {
-			err = instance.RebuildDevice(node, deviceid)
+			err = instance.BuildDevice(node, deviceid)
 			if err != nil {
 				log.Printf("[ERR ] error rebuilding pci %s: %s", deviceid, err)
 			}
@@ -445,7 +444,7 @@ func (instance *Instance) Build() error {
 	}
 
 	if instance.Type == VM {
-		err = instance.RebuildBoot(node)
+		err = instance.BuildBoot(node)
 		if err != nil {
 			log.Printf("[ERR ] error rebuilding boot: %s", err)
 			return err
@@ -459,7 +458,7 @@ func (instance *Instance) Build() error {
 	return nil
 }
 
-func (instance *Instance) RebuildVolume(node *Node, volid string) error {
+func (instance *Instance) BuildVolume(node *Node, volid string) error {
 	volumeDataString := instance.configDisks[volid]
 
 	volume, err := GetVolumeInfo(node, volumeDataString)
@@ -478,7 +477,7 @@ func (instance *Instance) RebuildVolume(node *Node, volid string) error {
 	return nil
 }
 
-func (instance *Instance) RebuildNet(node *Node, netid string) error {
+func (instance *Instance) BuildNet(node *Node, netid string) error {
 	net := instance.configNets[netid]
 
 	netinfo, err := GetNetInfo(net)
@@ -494,7 +493,7 @@ func (instance *Instance) RebuildNet(node *Node, netid string) error {
 	return nil
 }
 
-func (instance *Instance) RebuildDevice(node *Node, deviceid string) error {
+func (instance *Instance) BuildDevice(node *Node, deviceid string) error {
 	instanceDevice, ok := instance.configHostPCIs[deviceid]
 	if !ok { // if device does not exist
 		log.Printf("[WARN] %s not found in devices on node %s", deviceid, node.Name)
@@ -520,7 +519,7 @@ func (instance *Instance) RebuildDevice(node *Node, deviceid string) error {
 	return nil
 }
 
-func (instance *Instance) RebuildBoot(node *Node) error {
+func (instance *Instance) BuildBoot(node *Node) error {
 	instance.Boot = BootOrder{}
 
 	eligibleBoot := map[string]bool{}

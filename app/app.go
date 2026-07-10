@@ -69,26 +69,26 @@ func Run() {
 	})
 
 	router.GET("/", func(c *gin.Context) {
-		v, err := cluster.Get()
+		callback := Callback{}
+		v, err := GetCluster(&callback, &cluster)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
 		} else {
 			c.JSON(http.StatusOK, gin.H{"cluster": v})
-			return
 		}
+		callback.Invoke()
 	})
 
 	router.GET("/nodes/:node", func(c *gin.Context) {
 		nodeid := c.Param("node")
-		node, err := cluster.GetNode(nodeid)
+		callback := Callback{}
+		node, err := GetNode(&callback, &cluster, nodeid)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
 		} else {
 			c.JSON(http.StatusOK, gin.H{"node": node})
-			return
 		}
+		callback.Invoke()
 	})
 
 	router.GET("/nodes/:node/instances/:vmid", func(c *gin.Context) {
@@ -98,14 +98,14 @@ func Run() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s could not be converted to vmid (uint)", c.Param("instance"))})
 			return
 		}
-		instance, err := cluster.GetInstance(nodeid, vmid)
+		callback := Callback{}
+		instance, err := GetInstance(&callback, &cluster, nodeid, vmid)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
 		} else {
 			c.JSON(http.StatusOK, gin.H{"instance": instance})
-			return
 		}
+		callback.Invoke()
 	})
 
 	router.POST("/sync", func(c *gin.Context) {
@@ -125,12 +125,15 @@ func Run() {
 
 		log.Printf("[INFO] starting %s sync\n", nodeName)
 
-		node, err := cluster.GetNode(nodeName)
+		callback := Callback{}
+		node, err := GetNode(&callback, &cluster, nodeName)
 		if err != nil {
 			log.Printf("[ERR ] failed to sync %s: %s", nodeName, err.Error())
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			callback.Invoke()
 			return
 		}
+		callback.Invoke()
 
 		err = node.Sync()
 		if err != nil {
@@ -150,12 +153,15 @@ func Run() {
 
 		log.Printf("[INFO] starting %s.%d sync\n", nodeName, vmid)
 
-		instance, err := cluster.GetInstance(nodeName, vmid)
+		callback := Callback{}
+		instance, err := GetInstance(&callback, &cluster, nodeName, vmid)
 		if err != nil {
 			log.Printf("[ERR ] failed to sync %s.%d: %s", nodeName, vmid, err.Error())
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			callback.Invoke()
 			return
 		}
+		callback.Invoke()
 
 		err = instance.Sync()
 		if err != nil {
